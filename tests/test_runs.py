@@ -53,3 +53,31 @@ async def test_get_run_returns_correct_data(client: AsyncClient) -> None:
     assert data["id"] == run_id
     assert data["input"] == "Test sorgusu"
     assert data["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_list_runs_pagination(client: AsyncClient) -> None:
+    """GET /runs pagination checks."""
+    # Create 5 runs
+    for i in range(5):
+        resp = await client.post(
+            "/runs",
+            json={"agent_name": "pagination-agent", "input": f"run_{i}"},
+        )
+        assert resp.status_code == 201
+
+    # List with limit 2
+    resp = await client.get("/runs?limit=2")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 2
+    assert data[0]["input"] == "run_4"
+    assert data[1]["input"] == "run_3"
+
+    # List with limit 2, offset 2
+    resp = await client.get("/runs?limit=2&offset=2")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 2
+    assert data[0]["input"] == "run_2"
+    assert data[1]["input"] == "run_1"

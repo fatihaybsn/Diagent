@@ -51,10 +51,19 @@ async def create_run(
 
 @router.get("", response_model=list[RunResponse])
 async def list_runs(
+    limit: int = 100,
+    offset: int = 0,
     session: AsyncSession = Depends(get_session),
 ) -> list[Run]:
-    """List all runs."""
-    result = await session.execute(select(Run).order_by(Run.created_at.desc()))
+    """List all runs, newest first (paginated)."""
+    limit = min(max(1, limit), 100)
+    offset = max(0, offset)
+    result = await session.execute(
+        select(Run)
+        .order_by(Run.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
     return list(result.scalars().all())
 
 

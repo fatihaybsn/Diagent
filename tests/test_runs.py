@@ -56,6 +56,32 @@ async def test_get_run_returns_correct_data(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_finish_run_idempotency(client: AsyncClient) -> None:
+    """POST /runs/{id}/finish twice → 409 Conflict."""
+    create_resp = await client.post(
+        "/runs",
+        json={"agent_name": "idempotency-agent", "input": "test"},
+    )
+    assert create_resp.status_code == 201
+    run_id = create_resp.json()["id"]
+
+    # First finish call should succeed
+    finish1 = await client.post(
+        f"/runs/{run_id}/finish",
+        json={"output": "first"},
+    )
+    assert finish1.status_code == 200
+
+    # Second finish call should conflict
+    finish2 = await client.post(
+        f"/runs/{run_id}/finish",
+        json={"output": "second"},
+    )
+    assert finish2.status_code == 409
+    assert finish2.json()["detail"] == "Run is already finished"
+
+
+@pytest.mark.asyncio
 async def test_list_runs_pagination(client: AsyncClient) -> None:
     """GET /runs pagination checks."""
     # Create 5 runs

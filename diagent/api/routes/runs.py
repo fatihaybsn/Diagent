@@ -1,14 +1,21 @@
 """Run management endpoints."""
 
+from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from diagent.database import get_session
-from diagent.models import Agent, Run
-from diagent.schemas import RunCreate, RunResponse
+from diagent.models import Agent, Run, Span
+from diagent.schemas import (
+    FinishRunBody,
+    RunCreate,
+    RunResponse,
+    SpanCreate,
+    SpanResponse,
+)
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -16,7 +23,6 @@ router = APIRouter(prefix="/runs", tags=["runs"])
 async def _get_or_create_agent(
     session: AsyncSession, name: str
 ) -> Agent:
-    """Return existing agent by name or create one with default version."""
     result = await session.execute(select(Agent).where(Agent.name == name))
     agent = result.scalar_one_or_none()
     if agent is None:
@@ -27,7 +33,6 @@ async def _get_or_create_agent(
 
 
 async def _verify_run(session: AsyncSession, run_id: UUID) -> Run:
-    """Return the run or raise 404."""
     result = await session.execute(select(Run).where(Run.id == run_id))
     run = result.scalar_one_or_none()
     if run is None:
@@ -40,7 +45,6 @@ async def create_run(
     body: RunCreate,
     session: AsyncSession = Depends(get_session),
 ) -> Run:
-    """Create a new run."""
     agent = await _get_or_create_agent(session, body.agent_name)
     run = Run(agent_id=agent.id, input=body.input, status="running")
     session.add(run)
@@ -55,7 +59,6 @@ async def list_runs(
     offset: int = 0,
     session: AsyncSession = Depends(get_session),
 ) -> list[Run]:
-    """List all runs, newest first (paginated)."""
     limit = min(max(1, limit), 100)
     offset = max(0, offset)
     result = await session.execute(
@@ -72,5 +75,58 @@ async def get_run(
     run_id: UUID,
     session: AsyncSession = Depends(get_session),
 ) -> Run:
-    """Get a single run by ID."""
     return await _verify_run(session, run_id)
+
+
+@router.post("/{run_id}/spans", status_code=201, response_model=SpanResponse)
+async def create_span(
+    run_id: UUID,
+    body: SpanCreate,
+    session: AsyncSession = Depends(get_session),
+) -> Span:
+    await _verify_run(session, run_id)
+    span = Span(
+        run_id=run_id,
+        type=body.type,
+        name=body.name,
+        started_at=body.started_at,
+        ended_at=body.ended_at,
+        duration_ms=body.duration_ms,
+        payload=body.payload,
+    )
+    session.add(span)
+    await session.commit()
+    await session.refresh(span)
+    return span
+
+
+@router.post("/{run_id}/finish", response_model=RunResponse)
+async def finish_run(
+    run_id: UUID,
+    body: FinishRunBody = Body(default=None),
+    session: AsyncSession = Depends(get_session),
+) -> Run:
+    run = await _verify_run(session, run_id)
+    if run.status == "finished":
+        raise HTTPException(status_code=409, detail="Run is already finished")
+
+    now = datetime.now(timezone.utc)
+    run.status = "finished"
+    created_at = run.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    else:
+        created_at = created_at.astimezone(timezone.utc)
+    run.duration_ms = int((now - created_at).total_seconds() * 1000)
+
+    if body is not None:
+        if body.output is not None:
+            run.output = body.output
+        if body.total_tokens is not None:
+            run.total_tokens = body.total_tokens
+        if body.cost_usd is not None:
+            run.cost_usd = body.cost_usd
+
+    await session.commit()
+    await session.refresh(run)
+    return run

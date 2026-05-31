@@ -129,4 +129,9 @@ async def finish_run(
 
     await session.commit()
     await session.refresh(run)
+
+    # Trigger dummy echo task
+    from diagent.workers.tasks import echo_task
+    echo_task.delay(str(run.id))
+
     return run

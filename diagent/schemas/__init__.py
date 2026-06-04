@@ -61,6 +61,48 @@ class SpanResponse(BaseModel):
     payload: Optional[dict[str, Any]] = None
 
 
+# ── ToolCall ───────────────────────────────────────────
+
+class ToolCallCreate(BaseModel):
+    tool_name: str
+    args: Optional[dict[str, Any]] = None
+    status: str = "success"
+    error: Optional[str] = None
+    duration_ms: Optional[int] = None
+
+
+class ToolCallResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    run_id: UUID
+    tool_name: str
+    args: Optional[dict[str, Any]] = None
+    status: str
+    error: Optional[str] = None
+    duration_ms: Optional[int] = None
+
+
+# ── Retrieval ──────────────────────────────────────────
+
+class RetrievalCreate(BaseModel):
+    query: str
+    retrieved_chunks: Optional[list[dict[str, Any]]] = None
+    top_k: int = 5
+    source_age_hours: Optional[float] = None
+
+
+class RetrievalResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    run_id: UUID
+    query: str
+    retrieved_chunks: Optional[list[dict[str, Any]]] = None
+    top_k: int
+    source_age_hours: Optional[float] = None
+
+
 # ── Health ─────────────────────────────────────────────
 
 class HealthResponse(BaseModel):

@@ -8,13 +8,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from diagent.database import get_session
-from diagent.models import Agent, Run, Span
+from diagent.models import Agent, Run, Span, ToolCall, Retrieval
 from diagent.schemas import (
     FinishRunBody,
     RunCreate,
     RunResponse,
     SpanCreate,
     SpanResponse,
+    ToolCallCreate,
+    ToolCallResponse,
+    RetrievalCreate,
+    RetrievalResponse,
 )
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -98,6 +102,92 @@ async def create_span(
     await session.commit()
     await session.refresh(span)
     return span
+
+
+@router.post(
+    "/{run_id}/tool_calls", status_code=201, response_model=ToolCallResponse
+)
+async def create_tool_call(
+    run_id: UUID,
+    body: ToolCallCreate,
+    session: AsyncSession = Depends(get_session),
+) -> ToolCall:
+    await _verify_run(session, run_id)
+    now = datetime.now(timezone.utc)
+    tc = ToolCall(
+        run_id=run_id,
+        tool_name=body.tool_name,
+        args=body.args,
+        status=body.status,
+        error=body.error,
+        duration_ms=body.duration_ms,
+    )
+    session.add(tc)
+
+    ended_at = now
+    started_at = (
+        datetime.fromtimestamp(
+            now.timestamp() - (body.duration_ms / 1000), tz=timezone.utc
+        )
+        if body.duration_ms
+        else now
+    )
+    span = Span(
+        run_id=run_id,
+        type="tool_call",
+        name=body.tool_name,
+        started_at=started_at,
+        ended_at=ended_at,
+        duration_ms=body.duration_ms,
+        payload={
+            "tool_name": body.tool_name,
+            "args": body.args,
+            "status": body.status,
+            "error": body.error,
+        },
+    )
+    session.add(span)
+    await session.commit()
+    await session.refresh(tc)
+    return tc
+
+
+@router.post(
+    "/{run_id}/retrievals", status_code=201, response_model=RetrievalResponse
+)
+async def create_retrieval(
+    run_id: UUID,
+    body: RetrievalCreate,
+    session: AsyncSession = Depends(get_session),
+) -> Retrieval:
+    await _verify_run(session, run_id)
+    now = datetime.now(timezone.utc)
+    ret = Retrieval(
+        run_id=run_id,
+        query=body.query,
+        retrieved_chunks=body.retrieved_chunks,
+        top_k=body.top_k,
+        source_age_hours=body.source_age_hours,
+    )
+    session.add(ret)
+
+    span = Span(
+        run_id=run_id,
+        type="retrieval",
+        name="retrieval",
+        started_at=now,
+        ended_at=now,
+        duration_ms=0,
+        payload={
+            "query": body.query,
+            "top_k": body.top_k,
+            "chunk_count": len(body.retrieved_chunks) if body.retrieved_chunks else 0,
+        },
+    )
+    session.add(span)
+    await session.commit()
+    await session.refresh(ret)
+    return ret
 
 
 @router.post("/{run_id}/finish", response_model=RunResponse)

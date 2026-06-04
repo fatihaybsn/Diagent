@@ -57,3 +57,34 @@ async def test_span_create_rejects_invalid_types(
         },
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_log_tool_call_and_retrieval_endpoint(client: AsyncClient) -> None:
+    run_id = await _create_run(client)
+
+    # Log tool call
+    resp = await client.post(
+        f"/runs/{run_id}/tool_calls",
+        json={
+            "tool_name": "calculator",
+            "args": {"expr": "1+1"},
+            "status": "success",
+            "duration_ms": 100,
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["tool_name"] == "calculator"
+
+    # Log retrieval
+    resp = await client.post(
+        f"/runs/{run_id}/retrievals",
+        json={
+            "query": "refund policy",
+            "retrieved_chunks": [{"text": "Refund policy info", "source": "docs.md"}],
+            "top_k": 3,
+            "source_age_hours": 12.0,
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["query"] == "refund policy"

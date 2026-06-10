@@ -6,6 +6,8 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://diagent:diagent@localhost:5432/diagent"
     redis_url: str = "redis://localhost:6379/0"
+    tool_loop_threshold: int = 3
+    tool_failure_rate: float = 0.5
 
     model_config = SettingsConfigDict(
         env_file=".env",

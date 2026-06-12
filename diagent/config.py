@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     tool_loop_threshold: int = 3
     tool_failure_rate: float = 0.5
+    cost_spike_multiplier: float = 5.0
+    stale_data_hours: float = 72.0
 
     model_config = SettingsConfigDict(
         env_file=".env",

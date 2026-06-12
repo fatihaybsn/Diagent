@@ -119,9 +119,91 @@ def detect_tool_failure(run_id: str, engine: Engine) -> bool:
     return False
 
 
+def detect_cost_spike(run_id: str, engine: Engine) -> bool:
+    multiplier = _threshold("COST_SPIKE_MULTIPLIER", settings.cost_spike_multiplier)
+
+    with engine.connect() as conn:
+        run_row = conn.execute(
+            text("SELECT cost_usd, agent_id FROM runs WHERE id = :rid"),
+            {"rid": run_id},
+        ).fetchone()
+
+    if run_row is None or run_row[0] is None:
+        return False
+
+    cost_usd = float(run_row[0])
+    agent_id = str(run_row[1])
+
+    with engine.connect() as conn:
+        avg_row = conn.execute(
+            text(
+                "SELECT AVG(cost_usd) FROM runs "
+                "WHERE agent_id = :aid AND id != :rid "
+                "AND cost_usd IS NOT NULL AND status = 'finished'"
+            ),
+            {"aid": agent_id, "rid": run_id},
+        ).fetchone()
+
+    if avg_row is None or avg_row[0] is None:
+        return False
+
+    baseline = float(avg_row[0])
+    if baseline <= 0:
+        return False
+
+    if cost_usd > baseline * multiplier:
+        _insert_alert(
+            engine,
+            run_id,
+            alert_type="cost_spike",
+            severity="warning",
+            message=(
+                f"Cost ${cost_usd:.4f} exceeds baseline "
+                f"${baseline:.4f} × {multiplier} = ${baseline * multiplier:.4f}"
+            ),
+        )
+        return True
+
+    return False
+
+
+def detect_stale_data(run_id: str, engine: Engine) -> bool:
+    threshold_hours = _threshold("STALE_DATA_HOURS", settings.stale_data_hours)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT source_age_hours FROM retrievals "
+                "WHERE run_id = :rid AND source_age_hours IS NOT NULL"
+            ),
+            {"rid": run_id},
+        ).fetchall()
+
+    if not rows:
+        return False
+
+    max_age = max(float(row[0]) for row in rows)
+
+    if max_age > threshold_hours:
+        _insert_alert(
+            engine,
+            run_id,
+            alert_type="stale_data",
+            severity="warning",
+            message=(
+                f"Source age {max_age:.1f}h exceeds threshold {threshold_hours:.1f}h"
+            ),
+        )
+        return True
+
+    return False
+
+
 def run_all_detectors(run_id: str, engine: Engine) -> dict[str, bool]:
     results = {
         "tool_loop": detect_tool_loop(run_id, engine),
         "tool_failure": detect_tool_failure(run_id, engine),
+        "cost_spike": detect_cost_spike(run_id, engine),
+        "stale_data": detect_stale_data(run_id, engine),
     }
     return results

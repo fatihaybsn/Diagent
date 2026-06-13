@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     tool_failure_rate: float = 0.5
     cost_spike_multiplier: float = 5.0
     stale_data_hours: float = 72.0
+    latency_spike_ms: int = 30000
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -103,6 +103,19 @@ class RetrievalResponse(BaseModel):
     source_age_hours: Optional[float] = None
 
 
+# ── Alert ──────────────────────────────────────────────
+
+class AlertResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    run_id: Optional[UUID] = None
+    type: str
+    severity: str
+    message: str
+    created_at: datetime
+
+
 # ── Health ─────────────────────────────────────────────
 
 class HealthResponse(BaseModel):

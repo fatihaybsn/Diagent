@@ -2,7 +2,7 @@
 
 import logging
 import os
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from diagent.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -17,22 +17,27 @@ def _get_sync_database_url() -> str:
     return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
 
 
-@celery_app.task(name="diagent.echo_task")
-def echo_task(run_id: str) -> dict:
-    """Dummy task to verify Celery connection and DB visibility."""
+@celery_app.task(name="diagent.run_anomaly_detection")
+def run_anomaly_detection(run_id: str) -> dict:
+    """Run all rule-based anomaly detectors for a finished run."""
+    from diagent.core.anomaly_detector import run_all_detectors
+
     engine = create_engine(_get_sync_database_url())
     try:
-        with engine.connect() as conn:
-            row = conn.execute(
-                text("SELECT status FROM runs WHERE id = :rid"),
-                {"rid": run_id},
-            ).fetchone()
-        status = row[0] if row else "not_found"
-        logger.info(
-            "echo task — run_id=%s  status=%s  (DB connection OK)",
-            run_id,
-            status,
-        )
-        return {"run_id": run_id, "status": status}
+        results = run_all_detectors(run_id, engine)
+        triggered = [k for k, v in results.items() if v]
+
+        if triggered:
+            logger.info(
+                "Anomaly detection done — run_id=%s  triggered=%s",
+                run_id,
+                triggered,
+            )
+        else:
+            logger.info(
+                "Anomaly detection done — run_id=%s  no anomalies", run_id
+            )
+
+        return {"run_id": run_id, "results": results}
     finally:
         engine.dispose()

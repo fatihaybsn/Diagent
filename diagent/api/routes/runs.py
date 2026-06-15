@@ -220,8 +220,8 @@ async def finish_run(
     await session.commit()
     await session.refresh(run)
 
-    # Trigger dummy echo task
-    from diagent.workers.tasks import echo_task
-    echo_task.delay(str(run.id))
+    # Fire-and-forget: enqueue anomaly detection for the worker
+    from diagent.workers.tasks import run_anomaly_detection
+    run_anomaly_detection.delay(str(run.id))
 
     return run

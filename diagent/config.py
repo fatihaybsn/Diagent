@@ -6,11 +6,13 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://diagent:diagent@localhost:5432/diagent"
     redis_url: str = "redis://localhost:6379/0"
+    diagent_judge_backend: str = "openai"
+    judge_rate_limit_seconds: float = 1.0
     tool_loop_threshold: int = 3
-    tool_failure_rate: float = 0.5
     cost_spike_multiplier: float = 5.0
-    stale_data_hours: float = 72.0
     latency_spike_ms: int = 30000
+    stale_data_hours: float = 72.0
+    tool_failure_rate: float = 0.5
 
     model_config = SettingsConfigDict(
         env_file=".env",

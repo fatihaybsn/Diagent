@@ -7,11 +7,42 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 
+# ── Agent ──────────────────────────────────────────────
+
+class AgentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    version: str
+    created_at: datetime
+
+
 # ── Run ────────────────────────────────────────────────
 
 class RunCreate(BaseModel):
     agent_name: str
     input: str = ""
+
+
+# ── Evaluation ─────────────────────────────────────────
+
+class EvaluationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    run_id: UUID
+    faithfulness: Optional[float] = None
+    answer_relevancy: Optional[float] = None
+    context_precision: Optional[float] = None
+    overall_score: Optional[float] = None
+    created_at: datetime
+
+
+class EvaluationTriggerResponse(BaseModel):
+    run_id: UUID
+    status: str
+    task_id: str
 
 
 class RunResponse(BaseModel):
@@ -26,6 +57,7 @@ class RunResponse(BaseModel):
     total_tokens: Optional[int] = None
     cost_usd: Optional[float] = None
     created_at: datetime
+    evaluation: Optional[EvaluationResponse] = None
 
 
 class FinishRunBody(BaseModel):

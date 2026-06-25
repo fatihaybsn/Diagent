@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     latency_spike_ms: int = 30000
     stale_data_hours: float = 72.0
     tool_failure_rate: float = 0.5
+    diagnosis_rag_score_threshold: float = 0.6
 
     model_config = SettingsConfigDict(
         env_file=".env",

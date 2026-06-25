@@ -135,6 +135,20 @@ class RetrievalResponse(BaseModel):
     source_age_hours: Optional[float] = None
 
 
+# ── Diagnosis ──────────────────────────────────────────
+
+class DiagnosisResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    run_id: UUID
+    root_cause: str
+    confidence: float
+    evidence: Optional[list[str]] = None
+    recommendation: Optional[str] = None
+    created_at: datetime
+
+
 # ── Alert ──────────────────────────────────────────────
 
 class AlertResponse(BaseModel):
@@ -153,3 +167,13 @@ class AlertResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
+
+
+# ── Agent Health ───────────────────────────────────────
+
+class AgentHealthResponse(BaseModel):
+    status: str
+    agent_name: str
+    last_run_status: Optional[str] = None
+    active_alerts_count: int
+

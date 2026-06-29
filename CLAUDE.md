@@ -22,6 +22,7 @@ diagent/
 │   └── diagnostician.py
 ├── adapters/
 │   ├── demo_support_bot/    # Kavramsal demo
+│   └── pathfinder_ship/     # Gerçek entegrasyon (Adım 9)
 ├── api/                     # FastAPI routers
 ├── models/                  # SQLAlchemy ORM modelleri
 ├── workers/                 # Celery task'ları
@@ -38,7 +39,7 @@ diagent/
 1. `core/` hiçbir adapter'a import yapmaz, hiçbir projeye özel kod içermez
 2. Eşik değerleri (loop kaç kez, spike kaç kat) hardcode edilmez — .env / config'den okunur
 3. Diagnostician agent SALT-OKUNUR; veritabanına yazma, dış servis çağırma yetkisi yok
-4. `cost_spike` $/token mantığına dayanır
+4. `cost_spike` $/token mantığına dayanır; PathFinder-Ship adaptörü `latency_spike` kullanır
 5. Proje-spesifik mantık `adapters/` altında kalır, `core/`'a karışmaz
 
 ## Veritabanı Tabloları
@@ -61,11 +62,11 @@ GET    /runs/{id}
 POST   /runs/{id}/spans
 POST   /runs/{id}/tool_calls
 POST   /runs/{id}/retrievals
-POST   /runs/{id}/finish
+POST   /runs/{id}/finish        ← anomaly detection + RAG evaluation task'larını tetikler (retrieval olan run'larda)
 POST   /evaluations/run/{id}
 GET    /evaluations/run/{id}
 GET    /diagnoses/{run_id}
-GET    /alerts?run_id={uuid}
+GET    /alerts?run_id={uuid}    (opsiyonel — belirtilmezse tüm alert'ler döner)
 GET    /healthz
 ```
 
@@ -98,7 +99,7 @@ Eşik değerleri test ortamında env override ile değiştirilebilir olmalı.
 ## Tamamlanan Adımlar
 
 ### ✅ ADIM 1 — Şema & SDK Tasarımı
-- Veritabanı tabloları tabloları tasarlandı (agents, runs, spans, tool_calls, retrievals, evaluations, diagnoses, alerts)
+- Veritabanı tabloları tasarlandı (agents, runs, spans, tool_calls, retrievals, evaluations, diagnoses, alerts)
 - Pydantic request/response şemaları oluşturuldu
 - `docs/SCHEMA.md` dokümantasyonu yazıldı
 
@@ -160,3 +161,18 @@ Eşik değerleri test ortamında env override ile değiştirilebilir olmalı.
 - Testler düşük skorlu + birden fazla alert içeren seed run için diagnosis kaydının oluştuğunu ve RAG evaluation sonrası diagnosis task'ının otomatik kuyruğa alındığını doğruluyor.
 - **Kriter:** `GET /diagnoses/{run_id}` → `root_cause`, `confidence`, `evidence`, `recommendation` döner ✔️
 - **Test:** `pytest` → 22 test yeşil ✔️
+
+### ✅ ADIM 8 — Docker Compose + README Finalizasyonu
+- `docker-compose.yml`: 4 servisli final compose yapısı hazırlandı (`api`, `worker`, `postgres`, `redis`).
+- `api` ve `worker` aynı `Dockerfile` üzerinden build ediliyor; `api` FastAPI/Uvicorn komutuyla, `worker` Celery worker komutuyla başlıyor.
+- `postgres` ve `redis` için health check eklendi; `api` ve `worker`, `depends_on` ile iki servisin healthy olmasını bekliyor.
+- `api` başlangıcında `alembic upgrade head` çalıştırılarak temiz Postgres üzerinde tablolar otomatik kuruluyor.
+- `Dockerfile`: Python 3.12 slim single-stage image olarak finalize edildi; `PYTHONPATH=/app` eklendi.
+- `.env.example`: compose portları, Postgres bootstrap değerleri, app URL'leri, judge backend ayarları, detector threshold'ları, diagnostician threshold'u ve worker log seviyesi belgelendi.
+- `diagent/config.py`: `.env.example` içindeki compose/worker-only değişkenleri uygulamayı kırmasın diye Pydantic settings `extra="ignore"` yapıldı.
+- `diagent/workers/tasks.py`: worker sync DB bağlantısı kurulu bağımlılıkla uyumlu olacak şekilde `postgresql+psycopg2://` kullanıyor.
+- `README.md`: tek paragraflık proje açıklaması, `git clone → cp .env.example .env → docker compose up` kurulumu, temel curl örnekleri ve `@diagent.observe` örneği eklendi.
+- `diagent/__init__.py`: README'deki `diagent.observe`, `diagent.log_retrieval`, `diagent.log_tool_call` örneği doğrudan çalışsın diye tracer helper'ları paket kökünden export edildi.
+- Temiz geçici clone üzerinden Docker akışı test edildi; bu makinede `8000` portu başka container tarafından dolu olduğu için doğrulama `API_PORT=18000` ile yapıldı.
+- **Kriter:** Temiz ortamda `docker compose up` + `python -m scripts.seed_synthetic_data` + `curl localhost:8000/alerts` alert listesi döndürür ✔️
+- **Test:** Temiz clone'da compose build/up, seed script ve `/alerts` doğrulandı; `tool_loop`, `cost_spike`, `stale_data`, `tool_failure` alert'leri döndü ✔️

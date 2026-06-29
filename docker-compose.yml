@@ -1,3 +1,22 @@
+
+x-diagent-env: &diagent-env
+  DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://diagent:diagent@postgres:5432/diagent}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  DIAGENT_API_URL: ${DIAGENT_API_URL:-http://localhost:8000}
+  DIAGENT_JUDGE_BACKEND: ${DIAGENT_JUDGE_BACKEND:-openai}
+  JUDGE_RATE_LIMIT_SECONDS: ${JUDGE_RATE_LIMIT_SECONDS:-1}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_JUDGE_MODEL: ${OPENAI_JUDGE_MODEL:-gpt-4o-mini}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+  OLLAMA_JUDGE_MODEL: ${OLLAMA_JUDGE_MODEL:-llama3.1}
+  TOOL_LOOP_THRESHOLD: ${TOOL_LOOP_THRESHOLD:-3}
+  COST_SPIKE_MULTIPLIER: ${COST_SPIKE_MULTIPLIER:-5.0}
+  LATENCY_SPIKE_MS: ${LATENCY_SPIKE_MS:-30000}
+  STALE_DATA_HOURS: ${STALE_DATA_HOURS:-72.0}
+  TOOL_FAILURE_RATE: ${TOOL_FAILURE_RATE:-0.5}
+  DIAGNOSIS_RAG_SCORE_THRESHOLD: ${DIAGNOSIS_RAG_SCORE_THRESHOLD:-0.6}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -10,7 +29,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}""]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -25,14 +44,29 @@ services:
       timeout: 3s
       retries: 10
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh -c "alembic upgrade head && uvicorn diagent.api.app:app --host 0.0.0.0 --port 8000"
+    environment:
+      <<: *diagent-env
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   worker:
     build:
       context: .
       dockerfile: Dockerfile
     command: celery -A diagent.workers.celery_app:celery_app worker --loglevel=${CELERY_LOG_LEVEL:-info}
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://diagent:diagent@postgres:5432/diagent}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      <<: *diagent-env
+      DIAGENT_API_URL: ${DIAGENT_API_URL:-http://api:8000}
     depends_on:
       postgres:
         condition: service_healthy

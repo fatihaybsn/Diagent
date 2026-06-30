@@ -2,6 +2,8 @@
 
 Diagent, self-hosted AI agent ve RAG observability backend'idir; FastAPI, PostgreSQL, Redis, Celery, rule-based anomaly detector'lar, RAG quality evaluation ve read-only diagnostician agent ile agent run'larını, tool call'ları, retrieval kalitesini, alert'leri ve diagnosis sonuçlarını tek `docker compose up` akışında izlenebilir hale getirir.
 
+Sisteminizi Diagent ile nasıl entegre edeceğinizi öğrenmek için [Diagent Integration Guide](docs/INTEGRATION_GUIDE.md) dokümanını inceleyebilirsiniz.
+
 ## Kurulum
 
 ```bash

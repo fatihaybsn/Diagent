@@ -175,6 +175,8 @@ class DiagentTracer:
         run_id: str,
         *,
         output: str | None = None,
+        status: str | None = None,
+        error: str | None = None,
         total_tokens: int | None = None,
         cost_usd: float | None = None,
     ) -> dict[str, Any]:
@@ -182,6 +184,10 @@ class DiagentTracer:
         body: dict[str, Any] = {}
         if output is not None:
             body["output"] = output
+        if status is not None:
+            body["status"] = status
+        if error is not None:
+            body["error"] = error
         if total_tokens is not None:
             body["total_tokens"] = total_tokens
         if cost_usd is not None:
@@ -306,18 +312,21 @@ def observe(agent_name: str = "default", *, tracer: DiagentTracer | None = None)
                 token_meta = _run_metadata_store.set(meta_store)
 
                 output = None
+                error_text = None
                 try:
                     result = await fn(*args, **kwargs)
                     output = str(result) if result is not None else None
                     return result
-                except Exception:
-                    output = "[ERROR]"
+                except Exception as exc:
+                    error_text = f"{type(exc).__name__}: {exc}"
                     raise
                 finally:
                     # Collect accumulated metadata from context
                     t.finish_run(
                         run_id,
-                        output=output,
+                        output=output if error_text is None else None,
+                        status="failed" if error_text is not None else "finished",
+                        error=error_text,
                         total_tokens=meta_store.get("total_tokens") or None,
                         cost_usd=meta_store.get("cost_usd") or None,
                     )
@@ -346,18 +355,21 @@ def observe(agent_name: str = "default", *, tracer: DiagentTracer | None = None)
                 token_meta = _run_metadata_store.set(meta_store)
 
                 output = None
+                error_text = None
                 try:
                     result = fn(*args, **kwargs)
                     output = str(result) if result is not None else None
                     return result
-                except Exception:
-                    output = "[ERROR]"
+                except Exception as exc:
+                    error_text = f"{type(exc).__name__}: {exc}"
                     raise
                 finally:
                     # Collect accumulated metadata from context
                     t.finish_run(
                         run_id,
-                        output=output,
+                        output=output if error_text is None else None,
+                        status="failed" if error_text is not None else "finished",
+                        error=error_text,
                         total_tokens=meta_store.get("total_tokens") or None,
                         cost_usd=meta_store.get("cost_usd") or None,
                     )

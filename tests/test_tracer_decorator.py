@@ -22,11 +22,15 @@ class FakeTracer:
         self,
         run_id: str,
         output: str | None = None,
+        status: str | None = None,
+        error: str | None = None,
         total_tokens: int | None = None,
         cost_usd: float | None = None,
     ) -> dict:
         self.finished[run_id] = {
             "output": output,
+            "status": status,
+            "error": error,
             "total_tokens": total_tokens,
             "cost_usd": cost_usd,
         }
@@ -74,3 +78,37 @@ async def test_async_observe_decorator() -> None:
     assert tracer.finished["run-id-async-test-agent"]["output"] == "Async processed: Is shipping free?"
     assert tracer.finished["run-id-async-test-agent"]["total_tokens"] == 250
     assert tracer.finished["run-id-async-test-agent"]["cost_usd"] == 0.005
+
+
+def test_sync_observe_exception_marks_failed() -> None:
+    """Exception in decorated function should produce status='failed'."""
+    tracer = FakeTracer()
+
+    @observe(agent_name="fail-agent", tracer=tracer)
+    def failing_function(x: str) -> str:
+        raise ValueError("something broke")
+
+    with pytest.raises(ValueError, match="something broke"):
+        failing_function("test")
+
+    assert "run-id-fail-agent" in tracer.finished
+    finished = tracer.finished["run-id-fail-agent"]
+    assert finished["status"] == "failed"
+    assert "ValueError: something broke" in finished["error"]
+    assert finished["output"] is None  # output is None on failure
+
+
+def test_sync_observe_success_marks_finished() -> None:
+    """Successful decorated function should produce status='finished'."""
+    tracer = FakeTracer()
+
+    @observe(agent_name="ok-agent", tracer=tracer)
+    def ok_function(x: str) -> str:
+        return f"ok: {x}"
+
+    ok_function("test")
+    finished = tracer.finished["run-id-ok-agent"]
+    assert finished["status"] == "finished"
+    assert finished["error"] is None
+    assert finished["output"] == "ok: test"
+

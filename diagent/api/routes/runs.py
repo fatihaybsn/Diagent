@@ -246,16 +246,21 @@ async def finish_run(
     body: FinishRunBody = Body(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> Run:
-    """Mark a run as finished and trigger anomaly detection."""
+    """Mark a run as finished/failed and trigger anomaly detection."""
     from diagent.workers.tasks import run_anomaly_detection, run_rag_evaluation
 
     run = await _verify_run(session, run_id)
 
-    if run.status == "finished":
-        raise HTTPException(status_code=409, detail="Run is already finished")
+    if run.status in ("finished", "failed"):
+        raise HTTPException(status_code=409, detail="Run is already completed")
 
     now = datetime.now(timezone.utc)
-    run.status = "finished"
+    
+    final_status = "finished"
+    if body is not None and body.status is not None:
+        final_status = body.status
+    run.status = final_status
+
     created_at = run.created_at
     if created_at.tzinfo is None:
         created_at = created_at.replace(tzinfo=timezone.utc)
@@ -267,6 +272,8 @@ async def finish_run(
     if body is not None:
         if body.output is not None:
             run.output = body.output
+        if body.error is not None:
+            run.error = body.error
         if body.total_tokens is not None:
             run.total_tokens = body.total_tokens
         if body.cost_usd is not None:
@@ -278,11 +285,12 @@ async def finish_run(
     # Fire-and-forget: enqueue anomaly detection for the worker
     run_anomaly_detection.delay(str(run.id))
 
-    # Trigger RAG evaluation if this run has retrieval records
-    retrieval_check = await session.execute(
-        select(Retrieval.id).where(Retrieval.run_id == run.id).limit(1)
-    )
-    if retrieval_check.scalar_one_or_none() is not None:
-        run_rag_evaluation.delay(str(run.id))
+    # Trigger RAG evaluation only for successful runs with retrieval records
+    if final_status == "finished":
+        retrieval_check = await session.execute(
+            select(Retrieval.id).where(Retrieval.run_id == run.id).limit(1)
+        )
+        if retrieval_check.scalar_one_or_none() is not None:
+            run_rag_evaluation.delay(str(run.id))
 
     return run

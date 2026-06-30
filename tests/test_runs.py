@@ -78,7 +78,7 @@ async def test_finish_run_idempotency(client: AsyncClient) -> None:
         json={"output": "second"},
     )
     assert finish2.status_code == 409
-    assert finish2.json()["detail"] == "Run is already finished"
+    assert finish2.json()["detail"] == "Run is already completed"
 
 
 @pytest.mark.asyncio
@@ -107,4 +107,59 @@ async def test_list_runs_pagination(client: AsyncClient) -> None:
     assert len(data) == 2
     assert data[0]["input"] == "run_2"
     assert data[1]["input"] == "run_1"
+
+
+@pytest.mark.asyncio
+async def test_finish_run_as_failed(client: AsyncClient) -> None:
+    """POST /runs/{id}/finish with status='failed' should set error."""
+    create_resp = await client.post(
+        "/runs", json={"agent_name": "fail-test", "input": "test"},
+    )
+    run_id = create_resp.json()["id"]
+
+    finish_resp = await client.post(
+        f"/runs/{run_id}/finish",
+        json={"status": "failed", "error": "TimeoutError: connection timed out"},
+    )
+    assert finish_resp.status_code == 200
+    data = finish_resp.json()
+    assert data["status"] == "failed"
+    assert data["error"] == "TimeoutError: connection timed out"
+    assert data["output"] is None
+
+
+@pytest.mark.asyncio
+async def test_finish_run_default_status_is_finished(client: AsyncClient) -> None:
+    """POST /runs/{id}/finish without status → defaults to 'finished'."""
+    create_resp = await client.post(
+        "/runs", json={"agent_name": "default-test", "input": "test"},
+    )
+    run_id = create_resp.json()["id"]
+
+    finish_resp = await client.post(
+        f"/runs/{run_id}/finish",
+        json={"output": "result"},
+    )
+    assert finish_resp.status_code == 200
+    assert finish_resp.json()["status"] == "finished"
+
+
+@pytest.mark.asyncio
+async def test_finish_failed_run_idempotency(client: AsyncClient) -> None:
+    """POST /runs/{id}/finish on a failed run → 409."""
+    create_resp = await client.post(
+        "/runs", json={"agent_name": "idem-fail", "input": "test"},
+    )
+    run_id = create_resp.json()["id"]
+
+    await client.post(
+        f"/runs/{run_id}/finish",
+        json={"status": "failed", "error": "crash"},
+    )
+    retry = await client.post(
+        f"/runs/{run_id}/finish",
+        json={"output": "retry"},
+    )
+    assert retry.status_code == 409
+
 

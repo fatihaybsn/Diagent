@@ -53,6 +53,7 @@ class RunResponse(BaseModel):
     input: str
     output: Optional[str] = None
     status: str
+    error: Optional[str] = None
     duration_ms: Optional[int] = None
     total_tokens: Optional[int] = None
     cost_usd: Optional[float] = None
@@ -62,6 +63,8 @@ class RunResponse(BaseModel):
 
 class FinishRunBody(BaseModel):
     output: Optional[str] = None
+    status: Optional[Literal["finished", "failed"]] = None
+    error: Optional[str] = None
     total_tokens: Optional[int] = None
     cost_usd: Optional[float] = None
 

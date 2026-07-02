@@ -837,6 +837,46 @@ Diagent reads all configuration options from your `.env` file via Pydantic setti
 
 ---
 
+### Domain-Specific Rules and Expected Behavior
+
+Diagent provides general observability primitives such as runs, spans, tool calls, retrievals, alerts, evaluations, and diagnoses. However, every AI agent or RAG system may also have its own domain-specific behavior rules.
+
+For example, in some systems:
+
+* A `chat` route should not execute a vision detection tool.
+* A `rag` route should perform at least one retrieval before generating a grounded answer.
+* A `vision` or `detect` route should not run object detection unless an image is available.
+* A payment tool should not run when the user only asked an informational question.
+* A destructive tool should require an explicit user confirmation step.
+* A final answer should be consistent with the tools or documents actually used during the run.
+
+Diagent cannot automatically know these project-specific rules unless the integrating system provides them. Therefore, when building a custom adapter, developers should define the expected behavior of their own system and compare it with the actual behavior observed during execution.
+
+A useful pattern is to record both expected and actual behavior:
+
+```json
+{
+  "intent": "chat",
+  "route": "chat",
+  "expected_tools": [],
+  "actual_tools": ["vision.detect"],
+  "violation": "unexpected_tool_for_route"
+}
+```
+
+This kind of information can be logged as a custom span, alert, or adapter-level diagnostic signal. It allows Diagent and the diagnosis pipeline to understand not only what happened, but also whether it was logically valid for that specific application.
+
+The more precisely a system defines its own intent, route, tool, retrieval, and fallback rules, the more accurately Diagent can help detect invalid behavior, explain failures, and support root-cause analysis.
+
+In short:
+
+* Diagent records and analyzes execution data.
+* The integrating application defines what “correct behavior” means for its own domain.
+* Custom adapters should bridge this gap by sending both execution traces and domain-specific expectations.
+
+
+---
+
 ## 11. Developing Custom Adapters
 
 For projects that require custom tracing architectures, you can create a custom adapter directly inside the Diagent codebase under the `diagent/adapters/` directory.
